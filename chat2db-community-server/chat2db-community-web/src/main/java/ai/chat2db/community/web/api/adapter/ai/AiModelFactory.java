@@ -94,7 +94,7 @@ public class AiModelFactory {
                 .openAiApi(patchOpenAiApiChunkMerger(apiBuilder.build()))
                 .defaultOptions(optionsBuilder.build())
                 .toolCallingManager(toolCallingManager)
-                .retryTemplate(RetryTemplate.defaultInstance())
+                .retryTemplate(RetryTemplate.builder().maxAttempts(1).build())
                 .observationRegistry(ObservationRegistry.NOOP)
                 .build();
 
@@ -127,7 +127,7 @@ public class AiModelFactory {
                 .anthropicApi(apiBuilder.build())
                 .defaultOptions(optionsBuilder.build())
                 .toolCallingManager(toolCallingManager)
-                .retryTemplate(RetryTemplate.defaultInstance())
+                .retryTemplate(RetryTemplate.builder().maxAttempts(1).build())
                 .observationRegistry(ObservationRegistry.NOOP)
                 .build();
 
@@ -160,7 +160,7 @@ public class AiModelFactory {
                 .vertexAI(vertexAI)
                 .defaultOptions(optionsBuilder.build())
                 .toolCallingManager(toolCallingManager)
-                .retryTemplate(RetryTemplate.defaultInstance())
+                .retryTemplate(RetryTemplate.builder().maxAttempts(1).build())
                 .observationRegistry(ObservationRegistry.NOOP)
                 .build();
 
