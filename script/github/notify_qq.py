@@ -294,7 +294,13 @@ def main() -> int:
     response = send_relay_message(relay_url, relay_token, repository, run_id, message)
     message_id = _clean_text(response.get("message_id"), 160)
     duplicate = bool(response.get("duplicate"))
-    suffix = "; duplicate suppressed" if duplicate else ""
+    url_removed = bool(response.get("url_removed"))
+    suffixes = []
+    if duplicate:
+        suffixes.append("duplicate suppressed")
+    if url_removed:
+        suffixes.append("URL removed by fallback")
+    suffix = "; " + "; ".join(suffixes) if suffixes else ""
     print(f"QQ notification sent: message_id={message_id or 'unknown'}{suffix}")
     return 0
 

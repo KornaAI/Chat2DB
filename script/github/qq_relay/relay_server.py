@@ -22,6 +22,7 @@ from urllib.request import Request, urlopen
 MAX_REQUEST_BYTES = 4096
 DELIVERY_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,160}$")
 CONTROL_CHARACTER_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+URL_PATTERN = re.compile(r"(?i)\b(?:https?://|www\.)\S+")
 
 
 class RequestError(RuntimeError):
@@ -29,6 +30,14 @@ class RequestError(RuntimeError):
         super().__init__(message)
         self.status = status
         self.message = message
+
+
+class OneBotRejected(RuntimeError):
+    """Raised when OneBot responds successfully but rejects the message."""
+
+
+def _remove_urls(message: str) -> str:
+    return URL_PATTERN.sub("[链接已省略]", message)
 
 
 @dataclass(frozen=True)
@@ -149,9 +158,13 @@ class OneBotClient:
             decoded = json.loads(response_body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise RuntimeError("OneBot returned invalid JSON") from error
-        if not isinstance(decoded, Mapping) or decoded.get("retcode") != 0:
+        if not isinstance(decoded, Mapping):
+            raise RuntimeError("OneBot returned an invalid response")
+        if decoded.get("retcode") != 0:
+            raise OneBotRejected("OneBot rejected the group message")
+        if not isinstance(decoded.get("data"), Mapping):
             raise RuntimeError("OneBot rejected the group message")
-        data = decoded.get("data") or {}
+        data = decoded["data"]
         return str(data.get("message_id") or "unknown")
 
 
@@ -245,12 +258,25 @@ class RelayHandler(BaseHTTPRequestHandler):
             reserved = True
             if not self.relay_state.rate_limiter.acquire():
                 raise RequestError(HTTPStatus.TOO_MANY_REQUESTS, "rate limit exceeded")
-            message_id = self.relay_state.onebot.send_group_message(message)
+            url_removed = False
+            try:
+                message_id = self.relay_state.onebot.send_group_message(message)
+            except OneBotRejected:
+                fallback_message = _remove_urls(message)
+                if fallback_message == message:
+                    raise
+                message_id = self.relay_state.onebot.send_group_message(fallback_message)
+                url_removed = True
             self.relay_state.deliveries.complete(delivery_id, message_id)
             reserved = False
             self._send_json(
                 HTTPStatus.OK,
-                {"ok": True, "duplicate": False, "message_id": message_id},
+                {
+                    "ok": True,
+                    "duplicate": False,
+                    "message_id": message_id,
+                    "url_removed": url_removed,
+                },
             )
         except RequestError as error:
             if reserved:

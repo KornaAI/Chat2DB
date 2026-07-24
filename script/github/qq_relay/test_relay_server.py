@@ -41,6 +41,18 @@ class OneBotClientTest(unittest.TestCase):
         )
         self.assertEqual("Bearer onebot-secret", request.get_header("Authorization"))
 
+    @patch("relay_server.urlopen")
+    def test_explicit_onebot_rejection_is_distinguishable(self, urlopen_mock):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps(
+            {"status": "failed", "retcode": 100, "data": None}
+        ).encode()
+        urlopen_mock.return_value = response
+        client = relay_server.OneBotClient("http://napcat:3000", "onebot-secret", 1080856850)
+
+        with self.assertRaises(relay_server.OneBotRejected):
+            client.send_group_message("hello")
+
 
 class RelayHTTPTest(unittest.TestCase):
     def setUp(self):
@@ -96,8 +108,43 @@ class RelayHTTPTest(unittest.TestCase):
 
         self.assertEqual(200, status)
         self.assertFalse(body["duplicate"])
+        self.assertFalse(body["url_removed"])
         self.assertEqual("message-42", body["message_id"])
         self.state.onebot.send_group_message.assert_called_once_with("hello")
+
+    def test_onebot_rejection_retries_once_without_urls(self):
+        self.state.onebot.send_group_message.side_effect = [
+            relay_server.OneBotRejected("rejected"),
+            "message-42",
+        ]
+
+        status, body = self._post(
+            self._payload(message="Details: https://github.com/OtterMind/Chat2DB/issues/1")
+        )
+
+        self.assertEqual(200, status)
+        self.assertTrue(body["url_removed"])
+        self.assertEqual("message-42", body["message_id"])
+        self.assertEqual(
+            [
+                unittest.mock.call(
+                    "Details: https://github.com/OtterMind/Chat2DB/issues/1"
+                ),
+                unittest.mock.call("Details: [链接已省略]"),
+            ],
+            self.state.onebot.send_group_message.call_args_list,
+        )
+
+    def test_onebot_rejection_without_url_is_not_retried(self):
+        self.state.onebot.send_group_message.side_effect = relay_server.OneBotRejected(
+            "rejected"
+        )
+
+        with self.assertRaises(HTTPError) as context:
+            self._post(self._payload(message="no link"))
+
+        self.assertEqual(502, context.exception.code)
+        self.state.onebot.send_group_message.assert_called_once_with("no link")
 
     def test_duplicate_delivery_is_not_sent_twice(self):
         self._post(self._payload())

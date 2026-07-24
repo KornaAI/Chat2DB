@@ -92,6 +92,8 @@ Actions**:
 
 The optional Actions variable `QQ_NOTIFICATION_INCLUDE_URL` defaults to
 `true`. Set it to `false` to omit GitHub URLs from notifications.
+When OneBot explicitly rejects a message containing a URL, the relay retries
+once with URLs replaced by `[链接已省略]`.
 
 The old `QQ_BOT_APP_ID`, `QQ_BOT_CLIENT_SECRET`, and `QQ_GROUP_OPENID` secrets
 are not used by this implementation and may be removed after the relay path is
